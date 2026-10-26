@@ -1,0 +1,100 @@
+name: tcl
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:?isi POSTGRES_USER di .env}:${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}@db:5432/${POSTGRES_DB:?isi POSTGRES_DB di .env}?schema=public
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?isi POSTGRES_USER di .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+      POSTGRES_DB: ${POSTGRES_DB:?isi POSTGRES_DB di .env}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Menjalankan migrasi (idempoten) lalu seed (upsert), sekali jalan sebelum app.
+  migrate:
+    build:
+      context: .
+      target: tooling
+    environment:
+      <<: *db-env
+      SEED_OPERATOR_PASSWORD: ${SEED_OPERATOR_PASSWORD:?isi SEED_OPERATOR_PASSWORD di .env}
+      SEED_SUPERVISOR_PASSWORD: ${SEED_SUPERVISOR_PASSWORD:?isi SEED_SUPERVISOR_PASSWORD di .env}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      <<: *db-env
+      JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET di .env (min. 32 karakter)}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  # Jalankan tes: docker compose --profile test run --rm test
+  # Memakai schema `test` pada database yang sama agar tidak menyentuh data aplikasi.
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      target: tooling
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=test
+      JWT_SECRET: test-secret-test-secret-test-secret-123456
+      COOKIE_SECURE: "false"
+    command: sh -c "npx prisma migrate deploy && npx vitest run"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Mode pengembangan dengan hot reload: docker compose --profile dev up dev
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: tooling
+    environment:
+      <<: *db-env
+      JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET di .env (min. 32 karakter)}
+      COOKIE_SECURE: "false"
+    command: sh -c "npx prisma migrate deploy && npm run dev -- --hostname 0.0.0.0"
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - next_cache:/app/.next
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  node_modules:
+  next_cache:

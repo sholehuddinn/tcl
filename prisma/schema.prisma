@@ -1,0 +1,169 @@
+// Skema mengikuti docs/technical-spec.md bagian 3 dan docs/erd.mmd.
+// CHECK constraint dan trigger append-only ditambahkan manual di SQL migrasi
+// (Prisma belum mendukungnya secara deklaratif).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OPERATOR
+  SUPERVISOR
+
+  @@map("role")
+}
+
+enum DocumentStatus {
+  DRAFT
+  OPEN
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CANCELLED
+
+  @@map("document_status")
+}
+
+enum InventoryTransactionType {
+  RECEIPT
+
+  @@map("inventory_transaction_type")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name") @db.VarChar(100)
+  role         Role
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  createdDocuments   ReceivingDocument[]   @relation("DocumentCreatedBy")
+  completedDocuments ReceivingDocument[]   @relation("DocumentCompletedBy")
+  cancelledDocuments ReceivingDocument[]   @relation("DocumentCancelledBy")
+  receipts           Receipt[]
+  transactions       InventoryTransaction[]
+
+  @@map("users")
+}
+
+model Product {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sku       String   @unique @db.VarChar(32)
+  name      String   @db.VarChar(150)
+  unit      String   @default("pcs") @db.VarChar(20)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  items        ReceivingItem[]
+  inventory    Inventory?
+  transactions InventoryTransaction[]
+
+  @@index([name])
+  @@map("products")
+}
+
+model ReceivingDocument {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number        Int            @unique @default(autoincrement())
+  supplierName  String         @map("supplier_name") @db.VarChar(150)
+  referenceNo   String?        @map("reference_no") @db.VarChar(100)
+  expectedDate  DateTime?      @map("expected_date") @db.Date
+  notes         String?        @db.VarChar(500)
+  status        DocumentStatus @default(DRAFT)
+  createdById   String         @map("created_by") @db.Uuid
+  completedById String?        @map("completed_by") @db.Uuid
+  cancelledById String?        @map("cancelled_by") @db.Uuid
+  cancelReason  String?        @map("cancel_reason") @db.VarChar(500)
+  submittedAt   DateTime?      @map("submitted_at") @db.Timestamptz(3)
+  completedAt   DateTime?      @map("completed_at") @db.Timestamptz(3)
+  cancelledAt   DateTime?      @map("cancelled_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  createdBy   User  @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+  completedBy User? @relation("DocumentCompletedBy", fields: [completedById], references: [id])
+  cancelledBy User? @relation("DocumentCancelledBy", fields: [cancelledById], references: [id])
+
+  items        ReceivingItem[]
+  receipts     Receipt[]
+  transactions InventoryTransaction[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([supplierName])
+  @@map("receiving_documents")
+}
+
+model ReceivingItem {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId  String @map("document_id") @db.Uuid
+  productId   String @map("product_id") @db.Uuid
+  expectedQty Int    @map("expected_qty")
+  receivedQty Int    @default(0) @map("received_qty")
+
+  document ReceivingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  product  Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  receipts Receipt[]
+
+  @@unique([documentId, productId])
+  @@index([productId])
+  @@map("receiving_items")
+}
+
+model Receipt {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId     String   @map("document_id") @db.Uuid
+  itemId         String   @map("item_id") @db.Uuid
+  quantity       Int
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(100)
+  notes          String?  @db.VarChar(500)
+  receivedById   String   @map("received_by") @db.Uuid
+  receivedAt     DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  document   ReceivingDocument      @relation(fields: [documentId], references: [id])
+  item       ReceivingItem          @relation(fields: [itemId], references: [id])
+  receivedBy User                   @relation(fields: [receivedById], references: [id])
+  transaction InventoryTransaction?
+
+  @@unique([documentId, idempotencyKey])
+  @@index([itemId, receivedAt])
+  @@map("receipts")
+}
+
+model Inventory {
+  productId String   @id @map("product_id") @db.Uuid
+  quantity  Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("inventory")
+}
+
+model InventoryTransaction {
+  id            String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId     String                   @map("product_id") @db.Uuid
+  type          InventoryTransactionType
+  quantityDelta Int                      @map("quantity_delta")
+  balanceAfter  Int                      @map("balance_after")
+  documentId    String                   @map("document_id") @db.Uuid
+  receiptId     String                   @unique @map("receipt_id") @db.Uuid
+  createdById   String                   @map("created_by") @db.Uuid
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product   Product           @relation(fields: [productId], references: [id])
+  document  ReceivingDocument @relation(fields: [documentId], references: [id])
+  receipt   Receipt           @relation(fields: [receiptId], references: [id])
+  createdBy User              @relation(fields: [createdById], references: [id])
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([documentId])
+  @@index([createdAt(sort: Desc)])
+  @@map("inventory_transactions")
+}
