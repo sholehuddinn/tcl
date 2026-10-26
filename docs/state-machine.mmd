@@ -1,0 +1,11 @@
+stateDiagram-v2
+    [*] --> DRAFT : create (OPERATOR/SUPERVISOR)
+    DRAFT --> DRAFT : ganti item
+    DRAFT --> OPEN : submit (min. 1 item)
+    DRAFT --> CANCELLED : cancel (SUPERVISOR, alasan)
+    OPEN --> PARTIALLY_RECEIVED : penerimaan pertama (otomatis)
+    OPEN --> CANCELLED : cancel (SUPERVISOR, alasan)
+    PARTIALLY_RECEIVED --> PARTIALLY_RECEIVED : penerimaan berikutnya (qty <= sisa)
+    PARTIALLY_RECEIVED --> COMPLETED : complete (SUPERVISOR, semua item penuh)
+    COMPLETED --> [*]
+    CANCELLED --> [*]

@@ -1,0 +1,46 @@
+sequenceDiagram
+    autonumber
+    actor Op as Operator
+    participant UI as UI (Next.js page)
+    participant RH as Route Handler<br/>POST /receiving-documents/{id}/receipts
+    participant SV as ReceivingService
+    participant DB as PostgreSQL
+
+    Op->>UI: isi jumlah, klik "Terima"
+    UI->>RH: POST {itemId, quantity} + Idempotency-Key + cookie sesi
+    RH->>RH: verifikasi JWT, cek key wajib, validasi zod
+    alt tidak valid / tidak login
+        RH-->>UI: 400 / 401
+    end
+    RH->>SV: recordReceipt(actor, documentId, input, key)
+    SV->>DB: BEGIN
+    SV->>DB: SELECT dokumen FOR UPDATE
+    alt dokumen tidak ada
+        SV-->>RH: NOT_FOUND (rollback)
+    end
+    SV->>DB: cari receipt (document_id, key)
+    alt key sudah ada
+        alt itemId & quantity sama
+            SV-->>RH: hasil tersimpan (replayed)
+            RH-->>UI: 200 replayed:true
+        else berbeda
+            SV-->>RH: IDEMPOTENCY_KEY_REUSED
+            RH-->>UI: 409
+        end
+    end
+    SV->>SV: status harus OPEN / PARTIALLY_RECEIVED
+    SV->>DB: SELECT item FOR UPDATE
+    SV->>SV: quantity <= expected - received ?
+    alt melebihi sisa
+        SV-->>RH: QUANTITY_EXCEEDS_REMAINING (rollback)
+        RH-->>UI: 422
+    end
+    SV->>DB: INSERT receipts
+    SV->>DB: UPDATE receiving_items received_qty += quantity
+    SV->>DB: UPSERT inventory quantity += quantity RETURNING
+    SV->>DB: INSERT inventory_transactions (delta, balance_after)
+    SV->>DB: UPDATE dokumen status OPEN -> PARTIALLY_RECEIVED (jika perlu)
+    SV->>DB: COMMIT
+    SV-->>RH: receipt, item, stok, status dokumen
+    RH-->>UI: 201 {data}
+    UI-->>Op: tampilkan sisa & status terbaru

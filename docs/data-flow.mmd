@@ -1,0 +1,37 @@
+flowchart LR
+    subgraph Klien
+        U[Operator / Supervisor]
+        UI[Halaman Next.js]
+    end
+    subgraph "Next.js server"
+        RH["Route Handler /api/v1/*<br/>auth + validasi zod"]
+        SV["Services<br/>aturan bisnis + transaksi"]
+        PR[Prisma Client]
+    end
+    subgraph PostgreSQL
+        T1[(users)]
+        T2[(products)]
+        T3[(receiving_documents)]
+        T4[(receiving_items)]
+        T5[(receipts)]
+        T6[(inventory)]
+        T7[(inventory_transactions)]
+    end
+
+    U --> UI
+    UI -- "JSON + cookie sesi" --> RH
+    RH --> SV
+    SV --> PR
+    PR --> T1 & T2 & T3 & T4
+
+    %% Jalur penerimaan: satu transaksi atomik
+    SV == "recordReceipt (1 transaksi)" ==> PR
+    PR == "INSERT" ==> T5
+    PR == "UPDATE received_qty" ==> T4
+    PR == "UPSERT quantity" ==> T6
+    PR == "INSERT append-only" ==> T7
+    PR == "UPDATE status" ==> T3
+
+    T6 -- "GET /inventory" --> RH
+    T7 -- "GET /inventory/transactions" --> RH
+    RH -- "{data, meta} / error seragam" --> UI

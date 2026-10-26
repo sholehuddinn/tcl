@@ -1,0 +1,82 @@
+erDiagram
+    users ||--o{ receiving_documents : "created_by"
+    users ||--o{ receipts : "received_by"
+    users ||--o{ inventory_transactions : "created_by"
+    products ||--o{ receiving_items : "product_id"
+    products ||--|| inventory : "product_id"
+    products ||--o{ inventory_transactions : "product_id"
+    receiving_documents ||--|{ receiving_items : "document_id"
+    receiving_documents ||--o{ receipts : "document_id"
+    receiving_documents ||--o{ inventory_transactions : "document_id"
+    receiving_items ||--o{ receipts : "item_id"
+    receipts ||--|| inventory_transactions : "receipt_id"
+
+    users {
+        uuid id PK
+        varchar username UK
+        text password_hash
+        varchar full_name
+        role role "OPERATOR | SUPERVISOR"
+        boolean is_active
+        timestamptz created_at
+    }
+    products {
+        uuid id PK
+        varchar sku UK "CHECK format A-Z0-9._-"
+        varchar name
+        varchar unit
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    receiving_documents {
+        uuid id PK
+        int number UK "sequence, tampil RCV-000001"
+        varchar supplier_name
+        varchar reference_no
+        date expected_date
+        varchar notes
+        document_status status "DRAFT|OPEN|PARTIALLY_RECEIVED|COMPLETED|CANCELLED"
+        uuid created_by FK
+        uuid completed_by FK
+        uuid cancelled_by FK
+        varchar cancel_reason
+        timestamptz submitted_at
+        timestamptz completed_at
+        timestamptz cancelled_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    receiving_items {
+        uuid id PK
+        uuid document_id FK
+        uuid product_id FK
+        int expected_qty "CHECK 1..1000000"
+        int received_qty "CHECK 0..expected_qty"
+    }
+    receipts {
+        uuid id PK
+        uuid document_id FK
+        uuid item_id FK
+        int quantity "CHECK 1..1000000"
+        varchar idempotency_key "UNIQUE bersama document_id"
+        varchar notes
+        uuid received_by FK
+        timestamptz received_at
+    }
+    inventory {
+        uuid product_id PK, FK
+        int quantity "CHECK >= 0"
+        timestamptz updated_at
+    }
+    inventory_transactions {
+        uuid id PK
+        uuid product_id FK
+        inventory_transaction_type type "RECEIPT"
+        int quantity_delta "CHECK <> 0"
+        int balance_after "CHECK >= 0"
+        uuid document_id FK
+        uuid receipt_id FK, UK
+        uuid created_by FK
+        timestamptz created_at
+    }

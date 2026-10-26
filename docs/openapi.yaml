@@ -1,0 +1,661 @@
+openapi: 3.0.3
+info:
+  title: Warehouse Receiving API
+  version: 1.0.0
+  description: |
+    REST API Sistem Penerimaan Barang Gudang. Semua aturan bisnis ditegakkan di backend.
+    Autentikasi: cookie `session` (httpOnly) atau header `Authorization: Bearer <token>`.
+servers:
+  - url: http://localhost:3000/api/v1
+tags:
+  - name: Auth
+  - name: Products
+  - name: Receiving
+  - name: Inventory
+  - name: System
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Berhasil; cookie `session` di-set.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user: { $ref: '#/components/schemas/User' }
+                      token: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      responses:
+        '204': { description: Cookie dihapus }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Pengguna saat ini
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /products:
+    get:
+      tags: [Products]
+      summary: Daftar produk
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: Cari SKU atau nama }
+        - { name: isActive, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Product' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Products]
+      summary: Buat produk (SUPERVISOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreate' }
+      responses:
+        '201':
+          description: Dibuat; stok awal 0.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: SKU_ALREADY_EXISTS
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /products/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [Products]
+      summary: Detail produk
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Product' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Products]
+      summary: Ubah produk (SUPERVISOR); SKU tidak dapat diubah
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /receiving-documents:
+    get:
+      tags: [Receiving]
+      summary: Daftar dokumen penerimaan
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/DocumentStatus' } }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: Cari pemasok, nomor referensi, atau nomor dokumen }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/DocumentSummary' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Receiving]
+      summary: Buat dokumen (status DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentCreate' }
+      responses:
+        '201':
+          description: Dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Document' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: PRODUCT_INACTIVE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /receiving-documents/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [Receiving]
+      summary: Detail dokumen beserta item dan penerimaan
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Document' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /receiving-documents/{id}/items:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    put:
+      tags: [Receiving]
+      summary: Ganti seluruh item (hanya status DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              additionalProperties: false
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/ItemInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Document' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE_TRANSITION (dokumen bukan DRAFT)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: PRODUCT_INACTIVE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /receiving-documents/{id}/submit:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    post:
+      tags: [Receiving]
+      summary: Ajukan dokumen (DRAFT → OPEN)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Document' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE_TRANSITION
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /receiving-documents/{id}/receipts:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    post:
+      tags: [Receiving]
+      summary: Catat penerimaan (sebagian atau penuh) untuk satu item
+      description: |
+        Atomik: menambah `receivedQty`, menambah stok, menulis riwayat transaksi, dan
+        memperbarui status dokumen dalam satu transaksi database.
+        Request ulang dengan `Idempotency-Key` yang sama dan isi sama mengembalikan hasil semula (200).
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+          description: Kunci unik per upaya penerimaan (mis. UUID dibuat klien).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReceiptCreate' }
+      responses:
+        '201':
+          description: Penerimaan baru dicatat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceiptResult' }
+        '200':
+          description: Replay; tidak ada efek baru (`replayed: true`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceiptResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: DOCUMENT_NOT_RECEIVABLE atau IDEMPOTENCY_KEY_REUSED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: QUANTITY_EXCEEDS_REMAINING
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /receiving-documents/{id}/complete:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    post:
+      tags: [Receiving]
+      summary: Selesaikan dokumen (SUPERVISOR; semua item harus penuh)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Document' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE_TRANSITION atau DOCUMENT_NOT_FULLY_RECEIVED (details berisi item belum penuh)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /receiving-documents/{id}/cancel:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+    post:
+      tags: [Receiving]
+      summary: Batalkan dokumen DRAFT/OPEN (SUPERVISOR)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Document' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE_TRANSITION
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /inventory:
+    get:
+      tags: [Inventory]
+      summary: Stok tersedia per produk
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InventoryItem' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /inventory/transactions:
+    get:
+      tags: [Inventory]
+      summary: Riwayat transaksi stok (terbaru dahulu)
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: productId, in: query, schema: { type: string, format: uuid } }
+        - { name: documentId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/InventoryTransaction' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /health:
+    get:
+      tags: [System]
+      summary: Health/readiness check (memeriksa koneksi database)
+      security: []
+      responses:
+        '200':
+          description: Siap
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+        '503':
+          description: Database tidak terjangkau
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: session }
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    ValidationError:
+      description: VALIDATION_ERROR
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthenticated:
+      description: UNAUTHENTICATED
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: FORBIDDEN (peran tidak berhak)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Role: { type: string, enum: [OPERATOR, SUPERVISOR] }
+    DocumentStatus:
+      type: string
+      enum: [DRAFT, OPEN, PARTIALLY_RECEIVED, COMPLETED, CANCELLED]
+    Error:
+      type: object
+      required: [statusCode, error, message]
+      properties:
+        statusCode: { type: integer, example: 422 }
+        error: { type: string, example: QUANTITY_EXCEEDS_REMAINING }
+        message: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username: { type: string, minLength: 1, maxLength: 50 }
+        password: { type: string, minLength: 1, maxLength: 200 }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        fullName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string, example: BRG-001 }
+        name: { type: string }
+        unit: { type: string, example: pcs }
+        isActive: { type: boolean }
+        quantity: { type: integer, description: Stok tersedia, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+    ProductCreate:
+      type: object
+      required: [sku, name]
+      additionalProperties: false
+      properties:
+        sku: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{1,31}$', description: Dinormalisasi ke huruf besar }
+        name: { type: string, minLength: 1, maxLength: 150 }
+        unit: { type: string, minLength: 1, maxLength: 20, default: pcs }
+    ProductUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        unit: { type: string, minLength: 1, maxLength: 20 }
+        isActive: { type: boolean }
+    ItemInput:
+      type: object
+      required: [productId, expectedQty]
+      additionalProperties: false
+      properties:
+        productId: { type: string, format: uuid }
+        expectedQty: { type: integer, minimum: 1, maximum: 1000000 }
+    DocumentCreate:
+      type: object
+      required: [supplierName, items]
+      additionalProperties: false
+      properties:
+        supplierName: { type: string, minLength: 1, maxLength: 150 }
+        referenceNo: { type: string, maxLength: 100 }
+        expectedDate: { type: string, format: date }
+        notes: { type: string, maxLength: 500 }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { $ref: '#/components/schemas/ItemInput' }
+    DocumentSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, example: RCV-000001 }
+        supplierName: { type: string }
+        referenceNo: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/DocumentStatus' }
+        itemCount: { type: integer }
+        expectedTotal: { type: integer }
+        receivedTotal: { type: integer }
+        createdAt: { type: string, format: date-time }
+    Document:
+      allOf:
+        - { $ref: '#/components/schemas/DocumentSummary' }
+        - type: object
+          properties:
+            expectedDate: { type: string, format: date, nullable: true }
+            notes: { type: string, nullable: true }
+            isFullyReceived: { type: boolean }
+            cancelReason: { type: string, nullable: true }
+            submittedAt: { type: string, format: date-time, nullable: true }
+            completedAt: { type: string, format: date-time, nullable: true }
+            cancelledAt: { type: string, format: date-time, nullable: true }
+            createdBy: { $ref: '#/components/schemas/User' }
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/DocumentItem' }
+            receipts:
+              type: array
+              items: { $ref: '#/components/schemas/Receipt' }
+    DocumentItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product: { $ref: '#/components/schemas/Product' }
+        expectedQty: { type: integer }
+        receivedQty: { type: integer }
+        remainingQty: { type: integer }
+    ReceiptCreate:
+      type: object
+      required: [itemId, quantity]
+      additionalProperties: false
+      properties:
+        itemId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 1000000 }
+        notes: { type: string, maxLength: 500 }
+    Receipt:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        itemId: { type: string, format: uuid }
+        quantity: { type: integer }
+        notes: { type: string, nullable: true }
+        receivedBy: { $ref: '#/components/schemas/User' }
+        receivedAt: { type: string, format: date-time }
+    ReceiptResult:
+      type: object
+      properties:
+        replayed: { type: boolean }
+        data:
+          type: object
+          properties:
+            receipt: { $ref: '#/components/schemas/Receipt' }
+            item: { $ref: '#/components/schemas/DocumentItem' }
+            stockQuantity: { type: integer, description: Stok produk setelah penerimaan }
+            documentStatus: { $ref: '#/components/schemas/DocumentStatus' }
+    InventoryItem:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        sku: { type: string }
+        name: { type: string }
+        unit: { type: string }
+        quantity: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    InventoryTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [RECEIPT] }
+        productId: { type: string, format: uuid }
+        sku: { type: string }
+        productName: { type: string }
+        quantityDelta: { type: integer }
+        balanceAfter: { type: integer }
+        documentId: { type: string, format: uuid }
+        documentNumber: { type: string, example: RCV-000001 }
+        createdBy: { type: string, description: Nama pengguna pelaku }
+        createdAt: { type: string, format: date-time }
