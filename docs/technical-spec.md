@@ -198,7 +198,7 @@ Lihat `api-flow.mmd`. `POST /receiving-documents/{id}/receipts`:
 1. Route Handler: autentikasi sesi; baca `Idempotency-Key` (wajib, 1–100 karakter); validasi body dengan zod (`itemId` UUID, `quantity` integer 1..1.000.000).
 2. Service membuka transaksi (`READ COMMITTED`).
 3. `SELECT ... FROM receiving_documents WHERE id = $1 FOR UPDATE` — mengunci dokumen (urutan kunci selalu dokumen → item agar tidak deadlock). 404 bila tidak ada.
-4. Cek idempotensi: cari `receipts` dengan `(document_id, idempotency_key)`. Bila ada: jika `item_id` dan `quantity` sama → kembalikan hasil tersimpan (200, `replayed:true`); bila berbeda → 409 `IDEMPOTENCY_KEY_REUSED`. Transaksi selesai tanpa efek.
+4. Cek idempotensi: cari `receipts` dengan `(document_id, idempotency_key)`. Bila ada: jika `item_id` dan `quantity` sama → kembalikan receipt asli (200, `replayed:true`; nilai item, stok, dan status dokumen adalah kondisi saat ini, bukan snapshot respons pertama); bila berbeda → 409 `IDEMPOTENCY_KEY_REUSED`. Transaksi selesai tanpa efek.
 5. Cek status dokumen ∈ {`OPEN`, `PARTIALLY_RECEIVED`}, jika tidak 409 `DOCUMENT_NOT_RECEIVABLE`.
 6. `SELECT ... FROM receiving_items WHERE id = $2 AND document_id = $1 FOR UPDATE`; 404 bila tidak ada.
 7. Hitung `remaining = expected_qty - received_qty`; bila `quantity > remaining` → 422 `QUANTITY_EXCEEDS_REMAINING` (transaksi di-rollback).

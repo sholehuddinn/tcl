@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import { AppError, Errors, toErrorBody } from "@/src/server/errors";
 import {
@@ -122,7 +122,10 @@ describe("format error seragam", () => {
   });
 
   it("error tak dikenal -> 500 tanpa membocorkan pesan internal", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {}); // log internal memang diharapkan
     const body = toErrorBody(new Error("password db = rahasia"));
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
     expect(body).toEqual({
       statusCode: 500,
       error: "INTERNAL_ERROR",
