@@ -132,7 +132,7 @@ UNIQUE(document_id, idempotency_key). Index `(item_id, received_at)`.
 | created_by | uuid FK→users | |
 | created_at | timestamptz | default now() |
 
-Index: `(product_id, created_at DESC)`, `(document_id)`, `(created_at DESC)`. Tidak ada endpoint update/delete. Opsional pada migrasi: trigger yang menolak `UPDATE`/`DELETE` pada tabel ini.
+Index: `(product_id, created_at DESC)`, `(document_id)`, `(created_at DESC)`. Tidak ada endpoint update/delete. Trigger `inventory_transactions_append_only` (di migrasi awal) menolak `UPDATE`/`DELETE` per baris pada tabel ini; `TRUNCATE` tidak dicegah dan hanya dipakai oleh tes.
 
 ### Strategi migrasi
 - Prisma Migrate; folder `prisma/migrations` di-commit. Skema awal + SQL tambahan (CHECK constraint, trigger append-only, regex SKU) ditulis di migrasi yang sama karena Prisma belum mendukung CHECK secara deklaratif.
@@ -250,12 +250,12 @@ Alat: Vitest + PostgreSQL sungguhan (service `db` pada Compose, database `wareho
 | Unit | Fungsi murni: normalisasi/validasi SKU, skema zod (jumlah, key), pemetaan error → respons, mesin status (tabel transisi). |
 | Integrasi (service + DB) | Setiap BR: penerimaan sebagian/penuh, kelebihan ditolak tanpa mengubah stok, status salah, complete ditolak bila belum penuh, cancel setelah penerimaan ditolak, idempotensi (replay, key berbeda isi), **konkurensi** (20 penerimaan paralel, total tidak melebihi sisa; stok = jumlah receipt sukses), invarian: `inventory.quantity = SUM(receipts.quantity)` per produk dan `received_qty = SUM(receipts.quantity)` per item, tiap receipt punya tepat satu transaksi, `balance_after` berurutan. |
 | API (Route Handler) | Memanggil handler dengan `Request` nyata: 400/401/403/404/409/422, format error seragam, cookie/Bearer, otorisasi per peran. |
-| End-to-end | Skrip alur penuh lewat HTTP terhadap `docker compose up` (login → produk → dokumen → submit → terima parsial → terima sisa → complete → cek stok dan riwayat), dijalankan sebagai tes Vitest terhadap `BASE_URL` atau manual di browser. |
+| End-to-end | Skrip alur penuh lewat HTTP terhadap `docker compose up` (login → produk → dokumen → submit → terima parsial → terima sisa → complete → cek stok dan riwayat), diimplementasikan sebagai `scripts/smoke.mjs` (opsional `BASE_URL`), ditambah penelusuran manual di browser. Tes browser otomatis belum ada (lihat `testing.md`). |
 
 Bukti hasil tes dan invarian dikumpulkan di `docs/testing.md`.
 
 ## 10. Konfigurasi (Environment Variable)
-`DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_SECRET` (≥ 32 karakter), `COOKIE_SECURE`, `SEED_OPERATOR_PASSWORD`, `SEED_SUPERVISOR_PASSWORD`, `SEED_DEMO_DATA`, `PORT`. Contoh nilai fiktif ada di `.env.example`; `.env` tidak boleh di-commit.
+`DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `JWT_SECRET` (≥ 32 karakter), `COOKIE_SECURE`, `SEED_OPERATOR_PASSWORD`, `SEED_SUPERVISOR_PASSWORD`, `SEED_DEMO_DATA`, `DB_PORT`, `APP_PORT` (port host; di dalam container aplikasi memakai `PORT=3000`). `DATABASE_URL` disusun Compose dari `POSTGRES_*`. Contoh nilai fiktif ada di `.env.example`; `.env` tidak boleh di-commit.
 
 ## 11. Deployment Lokal
 `docker compose up --build` menjalankan `db` → `migrate` → `app` (port 3000). Healthcheck: `db` memakai `pg_isready`; `app` memakai `GET /api/v1/health`. Tes dijalankan dengan `docker compose --profile test run --rm test`. Tidak ada deployment publik.

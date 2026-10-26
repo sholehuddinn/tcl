@@ -66,7 +66,7 @@ Retur ke pemasok, penerimaan melebihi jumlah yang diharapkan (over-receipt), kor
 | NFR-02 Konsistensi | Penerimaan, pembaruan item, stok, riwayat, dan status dokumen terjadi dalam satu transaksi atomik. Penerimaan paralel tidak boleh melampaui jumlah diharapkan. |
 | NFR-03 Idempotensi | Pengiriman ulang request penerimaan yang sama tidak menambah stok dua kali. |
 | NFR-04 Keamanan | Password di-hash (bcrypt); sesi memakai JWT di cookie httpOnly; semua endpoint kecuali login dan health butuh autentikasi; otorisasi per peran di backend; tidak ada secret di repository. |
-| NFR-05 Kinerja | Daftar dan detail merespons < 500 ms untuk hingga 10.000 produk dan 10.000 dokumen pada satu instance (daftar dipaginasi, kolom pencarian diindeks). |
+| NFR-05 Kinerja | Daftar dan detail merespons < 500 ms untuk hingga 10.000 produk dan 10.000 dokumen pada satu instance (target; daftar dipaginasi). Belum diukur pada volume tersebut; pencarian teks memakai pencocokan substring yang tidak memanfaatkan index biasa. |
 | NFR-06 Auditabilitas | Riwayat transaksi tidak dapat diubah/dihapus lewat API. |
 | NFR-07 Operasional | Konfigurasi lewat environment variable; migrasi database terversi dan dapat dijalankan ulang tanpa efek samping; health check; log error terstruktur tanpa data sensitif. |
 | NFR-08 Kegunaan | UI responsif (desktop dan tablet), teks Bahasa Indonesia, pesan error yang jelas. |
@@ -106,7 +106,7 @@ Retur ke pemasok, penerimaan melebihi jumlah yang diharapkan (over-receipt), kor
 
 **US-03 Buat dokumen penerimaan** — Sebagai pengguna, saya membuat dokumen dengan item.
 - Given pemasok dan ≥1 item valid, Then dokumen `DRAFT` terbuat dengan nomor unik `RCV-000001`, dst.
-- Given produk duplikat, jumlah ≤ 0 atau bukan bilangan bulat, atau produk nonaktif, Then ditolak 400 dengan detail per field.
+- Given produk duplikat, jumlah ≤ 0, atau jumlah bukan bilangan bulat, Then ditolak 400 dengan detail per field. Given produk nonaktif, Then ditolak 422 `PRODUCT_INACTIVE`; given produk tidak ada, Then 404.
 - Given dokumen `DRAFT`, When saya mengganti item, Then item lama diganti seluruhnya.
 
 **US-04 Ajukan dokumen** — Given dokumen `DRAFT` berisi item, When submit, Then status `OPEN`. Given status lain, Then 409.

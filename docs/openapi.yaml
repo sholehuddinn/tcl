@@ -159,7 +159,7 @@ paths:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: status, in: query, schema: { $ref: '#/components/schemas/DocumentStatus' } }
-        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: Cari pemasok, nomor referensi, atau nomor dokumen }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: 'Cari pemasok, nomor referensi, atau nomor dokumen' }
       responses:
         '200':
           description: OK
@@ -307,7 +307,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReceiptResult' }
         '200':
-          description: Replay; tidak ada efek baru (`replayed: true`)
+          description: 'Replay; tidak ada efek baru (`replayed: true`)'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReceiptResult' }
@@ -530,7 +530,7 @@ components:
         name: { type: string }
         unit: { type: string, example: pcs }
         isActive: { type: boolean }
-        quantity: { type: integer, description: Stok tersedia, minimum: 0 }
+        quantity: { type: integer, description: 'Stok tersedia', minimum: 0 }
         createdAt: { type: string, format: date-time }
     ProductCreate:
       type: object
